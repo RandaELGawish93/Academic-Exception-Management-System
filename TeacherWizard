@@ -1,0 +1,464 @@
+<section id="teacherView" class="view">
+  <div class="page-heading">
+    <div>
+      <h2>Submission Wizard</h2>
+      <p>Submit one batch request with only the fields required for each exception type.</p>
+    </div>
+  </div>
+
+  <div class="wizard-steps" aria-label="Teacher workflow">
+    <span data-step-label="1" class="active">Teacher Information</span>
+    <span data-step-label="2">Students</span>
+    <span data-step-label="3">Review</span>
+    <span data-step-label="4">Success</span>
+  </div>
+
+  <form id="teacherForm">
+    <section class="panel wizard-step active" data-step="1">
+      <h3>Teacher Information</h3>
+      <div id="submitModePanel" class="segmented hidden">
+        <button type="button" data-submit-mode="teacher" class="active">Submit Request</button>
+        <button type="button" data-submit-mode="on-behalf">Submit on Behalf of Teacher</button>
+      </div>
+      <div class="form-grid">
+        <label>Teacher Name
+          <input id="teacherName" name="teacherName" required>
+        </label>
+        <label>Teacher Email
+          <input id="teacherEmail" name="teacherEmail" type="email" required>
+        </label>
+      </div>
+      <div class="actions">
+        <button type="button" class="primary" data-teacher-next>Next</button>
+      </div>
+    </section>
+
+    <section class="panel wizard-step" data-step="2">
+      <h3>Students</h3>
+      <div id="studentRows"></div>
+      <div class="actions">
+        <button type="button" id="addStudentButton">Add Student</button>
+        <button type="button" data-teacher-prev>Back</button>
+        <button type="button" class="primary" data-teacher-next>Review</button>
+      </div>
+    </section>
+
+    <section class="panel wizard-step" data-step="3">
+      <h3>Review</h3>
+      <div id="teacherReview" class="preview-box"></div>
+      <label class="checkbox-label">
+        <input id="teacherConfirm" type="checkbox">
+        I confirm this batch request is accurate and complete.
+      </label>
+      <div class="actions">
+        <button type="button" data-teacher-prev>Back</button>
+        <button type="submit" class="primary">Submit</button>
+      </div>
+    </section>
+
+    <section class="panel wizard-step" data-step="4">
+      <h3>Success</h3>
+      <div id="teacherSuccess" class="preview-box"></div>
+      <div class="actions">
+        <button type="button" class="primary" id="teacherReturnHome">Return Home</button>
+      </div>
+    </section>
+  </form>
+
+  <script>
+    function bindTeacherWizard() {
+      document.getElementById('addStudentButton').addEventListener('click', function() {
+        addStudentRow();
+      });
+
+      document.querySelectorAll('[data-teacher-next]').forEach(function(button) {
+        button.addEventListener('click', function() {
+          if (validateTeacherStep(appState.currentTeacherStep)) {
+            if (appState.currentTeacherStep === 2) {
+              renderTeacherReview();
+            }
+            setTeacherStep(appState.currentTeacherStep + 1);
+          }
+        });
+      });
+
+      document.querySelectorAll('[data-teacher-prev]').forEach(function(button) {
+        button.addEventListener('click', function() {
+          setTeacherStep(appState.currentTeacherStep - 1);
+        });
+      });
+
+      document.getElementById('teacherForm').addEventListener('submit', submitTeacherForm);
+      document.getElementById('teacherReturnHome').addEventListener('click', function() {
+        resetTeacherForm();
+        showView('home');
+      });
+
+      document.getElementById('studentRows').addEventListener('change', function(event) {
+        var row = event.target.closest('.student-row');
+        if (!row) {
+          return;
+        }
+
+        if (event.target.matches('[data-field="grade"], [data-field="exceptionType"], [data-field="incidentType"], [data-assignment-toggle]')) {
+          renderStudentDynamicFields(row, readStudentDraft(row));
+        }
+      });
+
+      document.querySelectorAll('[data-submit-mode]').forEach(function(button) {
+        button.addEventListener('click', function() {
+          setSubmitMode(button.getAttribute('data-submit-mode'));
+        });
+      });
+    }
+
+    function renderTeacherOptions() {
+      document.getElementById('submitModePanel').classList.toggle('hidden', !appState.user.isAcademicOffice);
+      if (!document.getElementById('teacherForm').dataset.submitMode) {
+        setSubmitMode('teacher');
+      }
+
+      if (!document.querySelector('.student-row')) {
+        addStudentRow();
+      }
+
+      if (!document.getElementById('teacherEmail').value && appState.user.email && !appState.user.isAcademicOffice) {
+        document.getElementById('teacherEmail').value = appState.user.email;
+      }
+    }
+
+    function setSubmitMode(mode) {
+      document.querySelectorAll('[data-submit-mode]').forEach(function(button) {
+        button.classList.toggle('active', button.getAttribute('data-submit-mode') === mode);
+      });
+      document.getElementById('teacherForm').dataset.submitMode = mode;
+    }
+
+    function addStudentRow(student) {
+      var container = document.getElementById('studentRows');
+      var row = document.createElement('div');
+      var baseStudent = student || {
+        grade: appState.grades[0] || '',
+        subject: appState.subjects[0] || '',
+        exceptionType: appState.exceptionTypes[0] || ''
+      };
+
+      row.className = 'student-row';
+      row.dataset.rowId = String(++appState.studentRowSeed);
+      row.innerHTML =
+        '<label>Student Name<input data-field="studentName" value="' + escapeHtml(baseStudent.studentName) + '" required></label>' +
+        '<label>Grade<select data-field="grade">' + optionsHtml(appState.grades, baseStudent.grade) + '</select></label>' +
+        '<label>Subject<select data-field="subject">' + optionsHtml(appState.subjects, baseStudent.subject) + '</select></label>' +
+        '<label>Exception Type<select data-field="exceptionType">' + optionsHtml(appState.exceptionTypes, baseStudent.exceptionType) + '</select></label>' +
+        '<button type="button" class="danger" data-remove-student>Remove</button>' +
+        '<div class="student-details"></div>';
+
+      row.querySelector('[data-remove-student]').addEventListener('click', function() {
+        if (document.querySelectorAll('.student-row').length > 1) {
+          row.remove();
+        }
+      });
+
+      container.appendChild(row);
+      renderStudentDynamicFields(row, baseStudent);
+    }
+
+    function renderStudentRows() {
+      document.querySelectorAll('.student-row').forEach(function(row) {
+        renderStudentDynamicFields(row, readStudentDraft(row));
+      });
+    }
+
+    function optionsHtml(options, selected, placeholder) {
+      var html = placeholder ? '<option value="">' + escapeHtml(placeholder) + '</option>' : '';
+      return html + options.map(function(option) {
+        return '<option value="' + escapeHtml(option) + '"' + (option === selected ? ' selected' : '') + '>' + escapeHtml(option) + '</option>';
+      }).join('');
+    }
+
+    function renderStudentDynamicFields(row, state) {
+      var exceptionType = state.exceptionType || appState.exceptionTypes[0] || '';
+      var detailsContainer = row.querySelector('.student-details');
+      var details = state.details || {};
+      var html = '';
+
+      if (exceptionType === 'Recurring Glitched Attempt') {
+        html = renderAssignmentExceptionHtml(details, appState.formConfig.recurringAssignments, true);
+      }
+
+      if (exceptionType === 'Suspended Account') {
+        html = renderAssignmentExceptionHtml(details, appState.formConfig.suspendedAssignments, false) +
+          '<div class="info-note">Evidence will be verified by the Academic Affairs Office using the school\'s official records.</div>';
+      }
+
+      if (exceptionType === 'Academic Integrity') {
+        html = renderAcademicIntegrityHtml(details);
+      }
+
+      detailsContainer.innerHTML = html;
+    }
+
+    function renderAssignmentExceptionHtml(details, assignments, requiresEvidence) {
+      var selected = {};
+
+      (details.assignments || []).forEach(function(assignment) {
+        selected[assignment.type] = assignment;
+      });
+
+      return [
+        '<div class="choice-grid">',
+        assignments.map(function(assignment) {
+          return '<label class="choice-chip"><input type="checkbox" data-assignment-toggle="' + escapeHtml(assignment.name) + '"' + (selected[assignment.name] ? ' checked' : '') + '> ' + escapeHtml(assignment.name) + '</label>';
+        }).join(''),
+        '</div>',
+        assignments.filter(function(assignment) {
+          return selected[assignment.name];
+        }).map(function(assignment) {
+          var selectedAssignment = selected[assignment.name] || {};
+          return [
+            '<div class="assignment-block">',
+            '<div class="assignment-title">' + escapeHtml(assignment.name) + ' (0-' + assignment.maxGrade + ')</div>',
+            '<label>Requested Grade<input type="number" min="0" max="' + escapeHtml(assignment.maxGrade) + '" data-assignment-grade="' + escapeHtml(assignment.name) + '" value="' + escapeHtml(selectedAssignment.requestedGrade) + '"></label>',
+            requiresEvidence ? '<label>Evidence Upload<input type="file" multiple data-assignment-files="' + escapeHtml(assignment.name) + '"></label>' : '',
+            '</div>'
+          ].join('');
+        }).join('')
+      ].join('');
+    }
+
+    function renderAcademicIntegrityHtml(details) {
+      var incidentType = details.incidentType || '';
+      var evidenceMap = {};
+      var behaviorMap = {};
+
+      (details.evidenceCategories || []).forEach(function(item) {
+        evidenceMap[item] = true;
+      });
+
+      (details.behaviors || []).forEach(function(item) {
+        behaviorMap[item] = true;
+      });
+
+      return [
+        '<label>Academic Integrity Type<select data-field="incidentType">' + optionsHtml(['Plagiarism', 'Cheating'], incidentType, 'Select') + '</select></label>',
+        incidentType === 'Plagiarism' ? [
+          '<label>Assignment<select data-field="integrityAssignment">' + optionsHtml(appState.formConfig.academicIntegrityAssignments.plagiarism, details.assignment, 'Select') + '</select></label>',
+          '<div class="choice-grid">' + appState.formConfig.plagiarismEvidenceTypes.map(function(item) {
+            return '<label class="choice-chip"><input type="checkbox" data-evidence-category="' + escapeHtml(item) + '"' + (evidenceMap[item] ? ' checked' : '') + '> ' + escapeHtml(item) + '</label>';
+          }).join('') + '</div>',
+          '<label>Written Description<textarea data-field="description">' + escapeHtml(details.description) + '</textarea></label>',
+          '<label>Evidence Upload<input type="file" multiple data-field="integrityFiles"></label>'
+        ].join('') : '',
+        incidentType === 'Cheating' ? [
+          '<label>Assignment<select data-field="integrityAssignment">' + optionsHtml(appState.formConfig.academicIntegrityAssignments.cheating, details.assignment, 'Select') + '</select></label>',
+          '<div class="choice-grid">' + appState.formConfig.cheatingBehaviors.map(function(item) {
+            return '<label class="choice-chip"><input type="checkbox" data-behavior-toggle="' + escapeHtml(item) + '"' + (behaviorMap[item] ? ' checked' : '') + '> ' + escapeHtml(item) + '</label>';
+          }).join('') + '</div>',
+          '<label>Written Description<textarea data-field="description">' + escapeHtml(details.description) + '</textarea></label>',
+          '<label>Evidence Upload (Optional)<input type="file" multiple data-field="integrityFiles"></label>'
+        ].join('') : ''
+      ].join('');
+    }
+
+    function readStudentDraft(row) {
+      var exceptionType = row.querySelector('[data-field="exceptionType"]').value;
+      var details = {};
+
+      if (exceptionType === 'Recurring Glitched Attempt' || exceptionType === 'Suspended Account') {
+        details.assignments = Array.prototype.slice.call(row.querySelectorAll('[data-assignment-toggle]:checked')).map(function(input) {
+          var assignmentType = input.getAttribute('data-assignment-toggle');
+          var gradeInput = row.querySelector('[data-assignment-grade="' + assignmentType.replace(/"/g, '&quot;') + '"]');
+          return {
+            type: assignmentType,
+            requestedGrade: gradeInput ? gradeInput.value : '',
+            evidenceFiles: []
+          };
+        });
+      }
+
+      if (exceptionType === 'Academic Integrity') {
+        details.incidentType = row.querySelector('[data-field="incidentType"]') ? row.querySelector('[data-field="incidentType"]').value : '';
+        details.assignment = row.querySelector('[data-field="integrityAssignment"]') ? row.querySelector('[data-field="integrityAssignment"]').value : '';
+        details.description = row.querySelector('[data-field="description"]') ? row.querySelector('[data-field="description"]').value : '';
+        details.evidenceCategories = Array.prototype.slice.call(row.querySelectorAll('[data-evidence-category]:checked')).map(function(input) {
+          return input.getAttribute('data-evidence-category');
+        });
+        details.behaviors = Array.prototype.slice.call(row.querySelectorAll('[data-behavior-toggle]:checked')).map(function(input) {
+          return input.getAttribute('data-behavior-toggle');
+        });
+      }
+
+      return {
+        studentName: row.querySelector('[data-field="studentName"]').value.trim(),
+        grade: row.querySelector('[data-field="grade"]').value,
+        subject: row.querySelector('[data-field="subject"]').value,
+        exceptionType: exceptionType,
+        details: details
+      };
+    }
+
+    function setTeacherStep(step) {
+      appState.currentTeacherStep = Math.max(1, Math.min(4, step));
+      document.querySelectorAll('.wizard-step').forEach(function(section) {
+        section.classList.toggle('active', Number(section.getAttribute('data-step')) === appState.currentTeacherStep);
+      });
+      document.querySelectorAll('[data-step-label]').forEach(function(label) {
+        label.classList.toggle('active', Number(label.getAttribute('data-step-label')) === appState.currentTeacherStep);
+      });
+    }
+
+    function validateTeacherStep(step) {
+      if (step === 1) {
+        if (!document.getElementById('teacherName').value.trim() || !document.getElementById('teacherEmail').checkValidity()) {
+          showToast('Teacher name and a valid email are required.');
+          return false;
+        }
+      }
+
+      if (step === 2) {
+        var students = collectStudentsSync();
+        if (!students.length) {
+          showToast('At least one student is required.');
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    function collectTeacherPayloadBase() {
+      return {
+        submitMode: appState.user.isAcademicOffice ? (document.getElementById('teacherForm').dataset.submitMode || 'teacher') : 'teacher',
+        teacherName: document.getElementById('teacherName').value.trim(),
+        teacherEmail: document.getElementById('teacherEmail').value.trim()
+      };
+    }
+
+    function collectStudentsSync() {
+      return Array.prototype.slice.call(document.querySelectorAll('.student-row')).map(function(row) {
+        return readStudentDraft(row);
+      }).filter(function(student) {
+        return student.studentName;
+      });
+    }
+
+    async function collectStudentsWithFiles() {
+      var rows = Array.prototype.slice.call(document.querySelectorAll('.student-row'));
+      var students = [];
+
+      for (var i = 0; i < rows.length; i++) {
+        students.push(await collectStudentWithFiles(rows[i]));
+      }
+
+      return students.filter(function(student) {
+        return student.studentName;
+      });
+    }
+
+    async function collectStudentWithFiles(row) {
+      var student = readStudentDraft(row);
+
+      if (student.exceptionType === 'Recurring Glitched Attempt' || student.exceptionType === 'Suspended Account') {
+        for (var i = 0; i < student.details.assignments.length; i++) {
+          var assignment = student.details.assignments[i];
+          var input = row.querySelector('[data-assignment-files="' + assignment.type.replace(/"/g, '&quot;') + '"]');
+          assignment.evidenceFiles = input ? await readFilesAsPayload(input.files, {
+            assignmentType: assignment.type
+          }) : [];
+        }
+      }
+
+      if (student.exceptionType === 'Academic Integrity') {
+        var integrityInput = row.querySelector('[data-field="integrityFiles"]');
+        student.details.evidenceFiles = integrityInput ? await readFilesAsPayload(integrityInput.files, {}) : [];
+      }
+
+      return student;
+    }
+
+    async function readFilesAsPayload(fileList, extra) {
+      var files = Array.prototype.slice.call(fileList || []);
+      var results = [];
+
+      for (var i = 0; i < files.length; i++) {
+        results.push(await readFileAsPayload(files[i], extra));
+      }
+
+      return results;
+    }
+
+    function readFileAsPayload(file, extra) {
+      return new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function(event) {
+          var result = String(event.target.result || '');
+          resolve({
+            fileName: file.name,
+            mimeType: file.type,
+            base64Data: result.split(',')[1] || '',
+            category: extra.category || '',
+            assignmentType: extra.assignmentType || ''
+          });
+        };
+        reader.onerror = function() {
+          reject(new Error('Unable to read the selected evidence file.'));
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderTeacherReview() {
+      var payload = collectTeacherPayloadBase();
+      var students = collectStudentsSync();
+      var lines = [
+        'Teacher: ' + payload.teacherName,
+        'Email: ' + payload.teacherEmail,
+        'Submitted As: ' + (payload.submitMode === 'on-behalf' ? 'Academic Office on behalf of teacher' : appState.user.role),
+        '',
+        'Students:'
+      ];
+
+      students.forEach(function(student, index) {
+        lines.push((index + 1) + '. ' + student.studentName + ' | ' + student.grade + ' | ' + student.subject + ' | ' + student.exceptionType);
+      });
+
+      document.getElementById('teacherReview').textContent = lines.join('\n');
+    }
+
+    async function submitTeacherForm(event) {
+      event.preventDefault();
+
+      if (!document.getElementById('teacherConfirm').checked) {
+        showToast('Please confirm the request before submitting.');
+        return;
+      }
+
+      try {
+        var payload = collectTeacherPayloadBase();
+        payload.students = await collectStudentsWithFiles();
+
+        runServer('submitTeacherRequest', [payload], function(result) {
+          document.getElementById('teacherSuccess').textContent =
+            'Batch ID: ' + result.batchId + '\nStudents: ' + result.studentCount + '\nThe request is now pending Academic Office review.';
+          setTeacherStep(4);
+          refreshHomeData();
+        });
+      } catch (error) {
+        showToast(error.message || 'Unable to prepare the request.');
+      }
+    }
+
+    function resetTeacherForm() {
+      document.getElementById('teacherForm').reset();
+      document.getElementById('teacherForm').dataset.submitMode = appState.user.isAcademicOffice ? 'teacher' : 'teacher';
+      document.getElementById('studentRows').innerHTML = '';
+      document.getElementById('teacherConfirm').checked = false;
+      setSubmitMode(appState.user.isAcademicOffice ? 'teacher' : 'teacher');
+      addStudentRow();
+      if (!appState.user.isAcademicOffice && appState.user.email) {
+        document.getElementById('teacherEmail').value = appState.user.email;
+      }
+      setTeacherStep(1);
+    }
+  </script>
+</section>
