@@ -238,7 +238,7 @@ All Rights Reserved.
 Academic Dean  
 NIS New Capital American School
 
-LinkedIn: *Add your LinkedIn profile here*
+LinkedIn: (https://www.linkedin.com/in/randaelgawishegy/)
 
 ---
 
