@@ -225,10 +225,6 @@ Planned modules include:
 
 This repository is provided for educational and portfolio purposes.
 
-Copyright © 2026 Randa ElGawish.
-
-All Rights Reserved.
-
 ---
 
 ## Author
