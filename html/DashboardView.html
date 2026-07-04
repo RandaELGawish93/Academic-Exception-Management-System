@@ -1,0 +1,141 @@
+<section id="dashboardView" class="view">
+  <div class="page-heading">
+    <div>
+      <h2>Dashboard & Settings</h2>
+      <p>Configure role detection, principal routing, and system-wide academic settings.</p>
+    </div>
+  </div>
+
+  <div id="dashboardCards"></div>
+
+  <section class="panel">
+    <h3>General Settings</h3>
+    <div class="form-grid">
+      <label>Academic Year
+        <input id="academicYearSetting">
+      </label>
+      <label>School Name
+        <input id="schoolNameSetting">
+      </label>
+      <label>Academic Dean Email
+        <input id="academicDeanEmailSetting" type="email">
+      </label>
+      <label>Associate Academic Dean Email
+        <input id="associateAcademicDeanEmailSetting" type="email">
+      </label>
+      <label class="checkbox-label">
+        <input id="testModeSetting" type="checkbox">
+        Test Mode
+      </label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h3>Principal Mappings</h3>
+    <div id="principalMappingsContainer" class="principal-grid"></div>
+    <div class="actions">
+      <button type="button" class="primary" id="saveSettingsButton">Save Settings</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h3>Archive Academic Year</h3>
+    <div class="form-grid">
+      <label>New Academic Year
+        <input id="newAcademicYearSetting" placeholder="2026-2027">
+      </label>
+    </div>
+    <div class="actions">
+      <button type="button" class="danger" id="archiveYearButton">Archive Academic Year</button>
+    </div>
+  </section>
+
+  <script>
+    function bindDashboardSettings() {
+      document.getElementById('saveSettingsButton').addEventListener('click', function() {
+        runServer('saveAppSettings', [collectSettingsPayload()], function(settings) {
+          appState.settings = settings;
+          renderAll();
+          showToast('Settings saved.');
+        });
+      });
+
+      document.getElementById('archiveYearButton').addEventListener('click', function() {
+        var newYear = document.getElementById('newAcademicYearSetting').value.trim();
+        if (!newYear) {
+          showToast('Enter the new academic year.');
+          return;
+        }
+
+        runServer('archiveAcademicYear', [newYear], function(data) {
+          applyServerState(data);
+          renderAll();
+          showToast('Academic year archived.');
+        });
+      });
+    }
+
+    function collectSettingsPayload() {
+      return {
+        academicYear: document.getElementById('academicYearSetting').value.trim(),
+        schoolName: document.getElementById('schoolNameSetting').value.trim(),
+        testMode: document.getElementById('testModeSetting').checked,
+        academicDeanEmail: document.getElementById('academicDeanEmailSetting').value.trim(),
+        associateAcademicDeanEmail: document.getElementById('associateAcademicDeanEmailSetting').value.trim(),
+        principalMappings: Array.prototype.slice.call(document.querySelectorAll('.principal-mapping')).map(function(section) {
+          return {
+            label: section.getAttribute('data-label'),
+            gradeSettingKey: section.getAttribute('data-grade-key'),
+            emailSettingKey: section.getAttribute('data-email-key'),
+            grades: section.querySelector('[data-principal-grades]').value.trim(),
+            email: section.querySelector('[data-principal-email]').value.trim()
+          };
+        })
+      };
+    }
+
+    function renderDashboardCards(targetId) {
+      var target = document.getElementById(targetId);
+      var dashboard = appState.dashboard || {};
+
+      if (!appState.user.isAcademicOffice && targetId === 'dashboardCards') {
+        target.innerHTML = '';
+        return;
+      }
+
+      target.innerHTML =
+        '<div class="dashboard-grid">' +
+          metricHtml('Pending Students', dashboard.pending || 0) +
+          metricHtml('Approved Students', dashboard.approved || 0) +
+          metricHtml('Rejected Students', dashboard.rejected || 0) +
+          metricHtml('Total Students', dashboard.total || 0) +
+        '</div>';
+    }
+
+    function metricHtml(label, value) {
+      return '<div class="metric"><span>' + escapeHtml(label) + '</span><strong>' + escapeHtml(value) + '</strong></div>';
+    }
+
+    function renderSettingsForm() {
+      document.getElementById('academicYearSetting').value = appState.settings.academicYear || '';
+      document.getElementById('schoolNameSetting').value = appState.settings.schoolName || '';
+      document.getElementById('academicDeanEmailSetting').value = appState.settings.academicDeanEmail || '';
+      document.getElementById('associateAcademicDeanEmailSetting').value = appState.settings.associateAcademicDeanEmail || '';
+      document.getElementById('testModeSetting').checked = Boolean(appState.settings.testMode);
+      document.getElementById('newAcademicYearSetting').value = '';
+      renderPrincipalMappings();
+    }
+
+    function renderPrincipalMappings() {
+      document.getElementById('principalMappingsContainer').innerHTML = (appState.settings.principalMappings || []).map(function(mapping) {
+        return [
+          '<div class="principal-mapping" data-label="' + escapeHtml(mapping.label) + '" data-grade-key="' + escapeHtml(mapping.gradeSettingKey) + '" data-email-key="' + escapeHtml(mapping.emailSettingKey) + '">',
+          '<h4>' + escapeHtml(mapping.label) + '</h4>',
+          '<label>Grades<input data-principal-grades value="' + escapeHtml((mapping.grades || []).join(', ')) + '"></label>',
+          '<label>Principal Email<input type="email" data-principal-email value="' + escapeHtml(mapping.email || '') + '"></label>',
+          '</div>'
+        ].join('');
+      }).join('');
+    }
+  </script>
+</section>
