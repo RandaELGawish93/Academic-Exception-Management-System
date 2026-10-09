@@ -8,6 +8,18 @@ Developed by **Randa ELGawish** as the first module of the **Academic Dean Suite
 
 ---
 
+## Screenshots
+
+> Screens below show the real interface populated with **fictional sample data** for illustration. No real school, staff or student data is included.
+
+**Action Center: pending request batches with preview, decisions and email generation**
+
+![Action Center: pending request batches with preview, decisions and email generation](docs/screenshots/aems-action-center.png)
+
+**Submission Wizard: step-by-step request form for teachers**
+
+![Submission Wizard: step-by-step request form for teachers](docs/screenshots/aems-wizard.png)
+
 ## Overview
 
 The Academic Exception Management System (AEMS) is a lightweight workflow management platform that digitizes academic exception requests while replacing manual emails, paper forms, and spreadsheets with a structured approval process.
